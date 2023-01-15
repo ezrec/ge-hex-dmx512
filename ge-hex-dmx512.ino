@@ -54,10 +54,15 @@
 //  lights!
 //
 
-const int PIN_D = 25;
-const int PIN_S = 26;
+#include <SPI.h>
+
+const int PIN_D = MOSI;
+const int PIN_S = SS;
 const char *WIFI_AUTOCONNECT_SSID = "hex-dmx512";
 const char *WIFI_AUTOCONNECT_PSK = "";
+const char *REPO_URL = "https://github.com/ezrec/ge-hex-dmx512";
+
+#define FASTLED_ALL_PINS_HARDWARE_SPI
 
 #include <ArtnetWifi.h>
 #include <AutoConnect.h>
@@ -65,7 +70,8 @@ const char *WIFI_AUTOCONNECT_PSK = "";
 #include <WiFi.h>
 #include <WiFiUdp.h>
 
-AutoConnect portal;
+WebServer server;
+AutoConnect portal(server);
 AutoConnectConfig portal_config;
 
 #define NUM_LEDS 12
@@ -124,9 +130,54 @@ void onBrightnessChange() {
   // Nothing to do!
 }
 
+String hexByte(uint8_t value) {
+  static const char *hexa = "0123456789abcdef";
+  String h;
+  h += hexa[(value >> 4) & 0xf];
+  h += hexa[(value >> 0) & 0xf];
+  return h;
+}
+
+String colorName(CRGB &color) {
+  String c;
+  c = "#" + hexByte(color.r) + hexByte(color.g) + hexByte(color.b);
+  return c;
+}
+
+void onRootPage() {
+  String content;
+  content += "<html><head><title>Hex DMX-512</title></head>";
+  content += "<body><p>DMX-512 Adapter for GE Hex LED+ Lights</a></p>";
+  content += "<p>Source code: <a href=\"";
+  content += REPO_URL;
+  content += "\">";
+  content += REPO_URL;
+  content += "</a></p>";
+  content += "<p>Wifi Configuration: <a href=\"/_ac\">AutoConnect</a></p>";
+  content += "<p>Pinout</p><table><tr><th>Pin</th><th>GPIO</th></tr>";
+  content += "<tr><td>PIN_D</td><td>";
+  content += PIN_D;
+  content += "</td></tr><tr><td>PIN_S</td><td>";
+  content += PIN_S;
+  content += "</td></tr></table>";
+  content += "<p>Active Colors</p>";
+  content += "<table><tr><th>Light</th><th>Color</th></tr>";
+  for (int i = 0; i < NUM_LEDS; i++) {
+    content += "<tr><td>";
+    content += (int)i;
+    String color = colorName(leds[i]);
+    content += "</td><td style=\"background-color:" + color + ";\">" + color +
+               "</td></tr>";
+  }
+  content += "</body></html>";
+
+  server.send(200, "text/html", content);
+}
+
 void setup() {
   Serial.begin(115200);
 
+  server.on("/", onRootPage);
   portal_config.ota = AC_OTA_BUILTIN;
   portal_config.apid = WIFI_AUTOCONNECT_SSID;
   portal_config.psk = WIFI_AUTOCONNECT_PSK;
@@ -136,12 +187,12 @@ void setup() {
   artnet.begin();
 
   pinMode(PIN_S, OUTPUT);
-  pinMode(PIN_D, OUTPUT);
   FastLED.addLeds<GS1903, PIN_D>(_leds, NUM_LEDS);
 
   // onDmxFrame will execute every time a packet is received by the ESP32
   artnet.setArtDmxCallback(onDmxFrame);
 
+  // Blank all LEDs
   led_show();
 }
 
